@@ -2,7 +2,7 @@ name: Multi-Subscription AKS Health Check
 
 on:
   schedule:
-    - cron: "*/15 * * * *"        # Runs every 15 minutes
+    - cron: "*/15 * * * *"     # Runs every 15 minutes
   workflow_dispatch:
 
 jobs:
@@ -46,9 +46,19 @@ jobs:
           ./scripts/aks_health_all_subs.sh
 
       ####################################################################
+      # VERIFY REPORT EXISTS BEFORE UPLOAD
+      ####################################################################
+      - name: Verify report file exists
+        run: |
+          if [ ! -f "reports/AKS Cluster Health.html" ]; then
+            echo "❌ ERROR: Report file not found: reports/AKS Cluster Health.html"
+            exit 1
+          fi
+
+      ####################################################################
       # UPLOAD HTML REPORT TO AZURE STORAGE (TIMESTAMPED, NO OVERWRITE)
       ####################################################################
-      - name: Upload HTML Report to Azure Storage (Timestamped)
+      - name: Upload HTML Report to Azure Storage
         id: upload
         run: |
           echo "Creating/Validating container..."
@@ -59,7 +69,6 @@ jobs:
 
           # Timestamp format: YYYY-MM-DD-HH-MM
           TS=$(date +"%Y-%m-%d-%H-%M")
-
           REPORT_NAME="AKS-Health-Report-$TS.html"
 
           echo "Uploading report: $REPORT_NAME"
@@ -77,7 +86,7 @@ jobs:
       ####################################################################
       # GENERATE SAS URL FOR TIMESTAMPED REPORT
       ####################################################################
-      - name: Generate SAS URL for HTML Report
+      - name: Generate SAS URL
         id: sas
         run: |
           EXPIRY=$(date -u -d "3 days" '+%Y-%m-%dT%H:%MZ')
@@ -96,13 +105,13 @@ jobs:
           echo "sasurl=$FULL_URL" >> $GITHUB_OUTPUT
 
       ####################################################################
-      # DISPLAY THE SAS URL IN WORKFLOW OUTPUT
+      # DISPLAY OUTPUT URL
       ####################################################################
       - name: Show Report URL
         run: |
           echo "==============================================="
           echo " AKS Health Report Uploaded Successfully"
-          echo " Report File: ${{ steps.upload.outputs.report_name }}"
-          echo " Access it using:"
+          echo " File: ${{ steps.upload.outputs.report_name }}"
+          echo " Access URL:"
           echo " ${{ steps.sas.outputs.sasurl }}"
           echo "==============================================="
