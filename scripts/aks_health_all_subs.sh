@@ -43,13 +43,14 @@ cat <<EOF > "$FINAL_REPORT"
 <style>
 body { font-family: Arial; background:#eef2f7; margin:20px; }
 h1 { color:white; }
-.card { background:white; padding:20px; margin-bottom:35px;
-  border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); }
+.card {
+  background:white; padding:20px; margin-bottom:35px;
+  border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
 table { width:100%; border-collapse:collapse; margin-top:15px; }
-th { background:#2c3e50; color:white; padding:12px; }
+th { background:#2c3e50; color:white; padding:12px; text-align:left; }
 td { padding:10px; border-bottom:1px solid #eee; }
-.healthy-all { background:#c8f7c5; color:#145a32; font-weight:bold; }
-.version-ok { background:#c8f7c5; color:#145a32; font-weight:bold; }
+.healthy { background:#c8f7c5; color:#145a32; font-weight:bold; }
 .collapsible {
   background:#3498db; color:white; cursor:pointer;
   padding:12px; width:100%; border-radius:6px;
@@ -60,8 +61,8 @@ td { padding:10px; border-bottom:1px solid #eee; }
   border-radius:6px; background:#fafafa; margin-bottom:25px;
 }
 pre {
-  background:#2d3436; color:#dfe6e9; padding:12px;
-  border-radius:6px;
+  background:#2d3436; color:#dfe6e9;
+  padding:12px; border-radius:6px; overflow-x:auto;
 }
 </style>
 <script>
@@ -111,16 +112,16 @@ for CL in $(echo "$CLUSTERS" | jq -r '.[] | @base64'); do
 <h3>Cluster: $CLUSTER</h3>
 <table>
 <tr><th>Check</th><th>Status</th></tr>
-<tr class="healthy-all"><td>Node Health</td><td>Healthy</td></tr>
-<tr class="healthy-all"><td>Pod Health</td><td>Healthy</td></tr>
-<tr class="healthy-all"><td>PVC Health</td><td>Healthy</td></tr>
-<tr class="version-ok"><td>Cluster Version</td><td>$VERSION</td></tr>
+<tr class="healthy"><td>Node Health</td><td>Healthy</td></tr>
+<tr class="healthy"><td>Pod Health</td><td>Healthy</td></tr>
+<tr class="healthy"><td>PVC Health</td><td>Healthy</td></tr>
+<tr class="healthy"><td>Cluster Version</td><td>$VERSION</td></tr>
 </table>
 </div>
 EOF
 
   ##########################################################
-  # CLUSTER UPGRADE & SECURITY SCHEDULE (FORMATTED)
+  # CLUSTER UPGRADE & SECURITY SCHEDULE (PORTAL STYLE)
   ##########################################################
   RAW_AUTO=$(az aks show -g "$RG" -n "$CLUSTER" \
     --query "autoUpgradeProfile.upgradeChannel" -o tsv 2>/dev/null)
@@ -131,15 +132,13 @@ EOF
     --name aksManagedAutoUpgradeSchedule \
     -g "$RG" --cluster-name "$CLUSTER" -o json 2>/dev/null)
 
-  if [[ -n "$AUTO_MC" ]]; then
-    AD=$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.startDate')
-    AT=$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.startTime')
-    AU=$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.utcOffset')
-    AW=$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.schedule.weekly.dayOfWeek')
-    UPGRADE_SCHED=$(format_schedule "$AD $AT $AU" "$AW")
-  else
-    UPGRADE_SCHED="Not Configured"
-  fi
+  [[ -n "$AUTO_MC" ]] \
+    && UPGRADE_SCHED=$(format_schedule \
+        "$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.startDate') \
+         $(echo "$AUTO_MC" | jq -r '.maintenanceWindow.startTime') \
+         $(echo "$AUTO_MC" | jq -r '.maintenanceWindow.utcOffset')" \
+        "$(echo "$AUTO_MC" | jq -r '.maintenanceWindow.schedule.weekly.dayOfWeek')" ) \
+    || UPGRADE_SCHED="Not Configured"
 
   RAW_NODE=$(az aks show -g "$RG" -n "$CLUSTER" \
     --query "autoUpgradeProfile.nodeOsUpgradeChannel" -o tsv 2>/dev/null)
@@ -150,15 +149,13 @@ EOF
     --name aksManagedNodeOSUpgradeSchedule \
     -g "$RG" --cluster-name "$CLUSTER" -o json 2>/dev/null)
 
-  if [[ -n "$NODE_MC" ]]; then
-    ND=$(echo "$NODE_MC" | jq -r '.maintenanceWindow.startDate')
-    NT=$(echo "$NODE_MC" | jq -r '.maintenanceWindow.startTime')
-    NU=$(echo "$NODE_MC" | jq -r '.maintenanceWindow.utcOffset')
-    NW=$(echo "$NODE_MC" | jq -r '.maintenanceWindow.schedule.weekly.dayOfWeek')
-    NODE_SCHED=$(format_schedule "$ND $NT $NU" "$NW")
-  else
-    NODE_SCHED="Not Configured"
-  fi
+  [[ -n "$NODE_MC" ]] \
+    && NODE_SCHED=$(format_schedule \
+        "$(echo "$NODE_MC" | jq -r '.maintenanceWindow.startDate') \
+         $(echo "$NODE_MC" | jq -r '.maintenanceWindow.startTime') \
+         $(echo "$NODE_MC" | jq -r '.maintenanceWindow.utcOffset')" \
+        "$(echo "$NODE_MC" | jq -r '.maintenanceWindow.schedule.weekly.dayOfWeek')" ) \
+    || NODE_SCHED="Not Configured"
 
   cat <<EOF >> "$FINAL_REPORT"
 <button class="collapsible">Cluster Upgrade & Security Schedule</button>
@@ -175,35 +172,68 @@ $NODE_SCHED
 EOF
 
   ##########################################################
-  # AUTOSCALING
+  # AUTOSCALING STATUS
   ##########################################################
   echo "<button class='collapsible'>Autoscaling Status – All Node Pools</button><div class='content'><pre>" >> "$FINAL_REPORT"
   az aks nodepool list -g "$RG" --cluster-name "$CLUSTER" -o table >> "$FINAL_REPORT"
   echo "</pre></div>" >> "$FINAL_REPORT"
 
   ##########################################################
-  # PSA
+  # POD SECURITY ADMISSION (FIXED)
   ##########################################################
   echo "<button class='collapsible'>Namespace Pod Security Admission</button><div class='content'><pre>" >> "$FINAL_REPORT"
+  printf "%-20s %-10s %-10s %-10s\n" "NAMESPACE" "ENFORCE" "AUDIT" "WARN" >> "$FINAL_REPORT"
   kubectl get ns -o json | jq -r '.items[] |
   [.metadata.name,
    (.metadata.labels["pod-security.kubernetes.io/enforce"] // "none"),
    (.metadata.labels["pod-security.kubernetes.io/audit"] // "none"),
-   (.metadata.labels["pod-security.kubernetes.io/warn"] // "none")] | @tsv' >> "$FINAL_REPORT"
+   (.metadata.labels["pod-security.kubernetes.io/warn"] // "none")] | @tsv' |
+  while IFS=$'\t' read -r a b c d; do
+    printf "%-20s %-10s %-10s %-10s\n" "$a" "$b" "$c" "$d"
+  done >> "$FINAL_REPORT"
   echo "</pre></div>" >> "$FINAL_REPORT"
 
   ##########################################################
-  # RBAC, NODES, PODS, SERVICES
+  # RBAC (FIXED)
   ##########################################################
   echo "<button class='collapsible'>Namespace RBAC</button><div class='content'><pre>" >> "$FINAL_REPORT"
-  kubectl get rolebindings -A -o wide
-  kubectl get clusterrolebindings -o wide
+  echo "RoleBindings:" >> "$FINAL_REPORT"
+  kubectl get rolebindings -A -o wide >> "$FINAL_REPORT"
+  echo "" >> "$FINAL_REPORT"
+  echo "ClusterRoleBindings:" >> "$FINAL_REPORT"
+  kubectl get clusterrolebindings -o wide >> "$FINAL_REPORT"
   echo "</pre></div>" >> "$FINAL_REPORT"
 
+  ##########################################################
+  # NODE LIST (SCALE METHOD + NODES)
+  ##########################################################
   echo "<button class='collapsible'>Node List</button><div class='content'><pre>" >> "$FINAL_REPORT"
+  echo "=== Node Pool Scale Method ===" >> "$FINAL_REPORT"
+
+  az aks nodepool list -g "$RG" --cluster-name "$CLUSTER" -o json | jq -r '.[] | @base64' |
+  while read row; do
+    _np(){ echo "$row" | base64 --decode | jq -r "$1"; }
+    name=$(_np '.name')
+    auto=$(_np '.enableAutoScaling')
+    min=$(_np '.minCount')
+    max=$(_np '.maxCount')
+    cnt=$(_np '.count')
+    if [[ "$auto" == "true" ]]; then
+      echo "$name: Scale method = Autoscale (min=$min, max=$max)" >> "$FINAL_REPORT"
+    else
+      [[ "$cnt" == "null" ]] && cnt=$(kubectl get nodes -l agentpool="$name" --no-headers | wc -l)
+      echo "$name: Scale method = Manual (count=$cnt)" >> "$FINAL_REPORT"
+    fi
+  done
+
+  echo "" >> "$FINAL_REPORT"
+  echo "=== Kubernetes Nodes ===" >> "$FINAL_REPORT"
   kubectl get nodes -o wide >> "$FINAL_REPORT"
   echo "</pre></div>" >> "$FINAL_REPORT"
 
+  ##########################################################
+  # PODS & SERVICES
+  ##########################################################
   echo "<button class='collapsible'>Pod List</button><div class='content'><pre>" >> "$FINAL_REPORT"
   kubectl get pods -A -o wide >> "$FINAL_REPORT"
   echo "</pre></div>" >> "$FINAL_REPORT"
@@ -216,9 +246,9 @@ done
 
 echo "</body></html>" >> "$FINAL_REPORT"
 
-echo "============================================"
+echo "=============================================="
 echo "AKS HTML Report Generated Successfully"
 echo "Saved at: $FINAL_REPORT"
-echo "============================================"
+echo "=============================================="
 
 exit 0
