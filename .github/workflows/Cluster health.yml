@@ -122,7 +122,7 @@ echo "<div style='background:#3498db;padding:15px;border-radius:6px;'>
 ############################################################
 # SUBSCRIPTIONS (add more if needed)
 ############################################################
-SUBSCRIPTION="f39ae20f-95cd-4de4-946e-a7785c1d93f1"
+SUBSCRIPTION="ee34d228-0201-4a8e-81e3-17dd322b166f"
 SUBS=$(az account list --query "[?id=='$SUBSCRIPTION']" -o json 2>/dev/null)
 
 ############################################################
