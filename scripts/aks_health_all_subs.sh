@@ -42,47 +42,70 @@ cat <<EOF > "$FINAL_REPORT"
 <html>
 <head>
 <title>AKS Cluster Health – Report</title>
+
 <style>
 body { font-family: Arial; background:#eef2f7; margin:20px; }
 h1 { color:white; }
+
 .card {
   background:white; padding:20px; margin-bottom:35px;
   border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);
 }
+
 table {
   width:100%; border-collapse:collapse; margin-top:15px;
   border-radius:12px; overflow:hidden; font-size:15px;
 }
-th { background:#2c3e50; color:white; padding:12px; text-align:left; }
-td { padding:10px; border-bottom:1px solid #eee; }
-.healthy-all { background:#c8f7c5; color:#145a32; font-weight:bold; }
-.version-ok { background:#c8f7c5; color:#145a32; font-weight:bold; }
+
+th {
+  background:#2c3e50; color:white; padding:12px; text-align:left;
+}
+
+td {
+  padding:10px; border-bottom:1px solid #eee;
+}
+
+.healthy-all {
+  background:#c8f7c5; color:#145a32; font-weight:bold;
+}
+
+.version-ok {
+  background:#c8f7c5; color:#145a32; font-weight:bold;
+}
+
 .collapsible {
   background:#3498db; color:white; cursor:pointer;
   padding:12px; width:100%; border-radius:6px;
   font-size:16px; text-align:left; margin-top:25px;
 }
+
+.collapsible:hover { background:#2980b9; }
+
 .content {
   padding:12px; display:none; border:1px solid #ccc;
   border-radius:6px; background:#fafafa; margin-bottom:25px;
 }
+
 pre {
   background:#2d3436; color:#dfe6e9; padding:10px;
   border-radius:6px; overflow-x:auto;
 }
 </style>
+
 <script>
 document.addEventListener("DOMContentLoaded",()=>{
-  document.querySelectorAll(".collapsible").forEach(b=>{
-    b.onclick=()=> {
-      let c=b.nextElementSibling;
-      c.style.display=(c.style.display==="block"?"none":"block");
+  document.querySelectorAll(".collapsible").forEach(btn=>{
+    btn.onclick=()=>{
+      let c = btn.nextElementSibling;
+      c.style.display = (c.style.display === "block") ? "none" : "block";
     };
   });
 });
 </script>
+
 </head>
 <body>
+
 <div style="background:#3498db;padding:15px;border-radius:6px;">
 <h1>AKS Cluster Health – Report</h1>
 </div>
@@ -132,6 +155,41 @@ cat <<EOF >> "$FINAL_REPORT"
 </table>
 </div>
 EOF
+
+############################################################
+# CLUSTER UPGRADE & SECURITY SCHEDULE
+############################################################
+echo "<button class='collapsible'>Cluster Upgrade & Security Schedule</button><div class='content'><pre>" >> "$FINAL_REPORT"
+az aks show -g "$RG" -n "$CLUSTER" -o yaml 2>/dev/null >> "$FINAL_REPORT"
+echo "</pre></div>" >> "$FINAL_REPORT"
+
+############################################################
+# AUTOSCALING
+############################################################
+echo "<button class='collapsible'>Autoscaling Status – All Node Pools</button><div class='content'><pre>" >> "$FINAL_REPORT"
+az aks nodepool list -g "$RG" --cluster-name "$CLUSTER" -o table 2>/dev/null >> "$FINAL_REPORT"
+echo "</pre></div>" >> "$FINAL_REPORT"
+
+############################################################
+# PSA
+############################################################
+echo "<button class='collapsible'>Namespace Pod Security Admission</button><div class='content'><pre>" >> "$FINAL_REPORT"
+kubectl get ns -o json 2>/dev/null | jq -r '
+.items[] |
+[.metadata.name,
+(.metadata.labels["pod-security.kubernetes.io/enforce"] // "none"),
+(.metadata.labels["pod-security.kubernetes.io/audit"] // "none"),
+(.metadata.labels["pod-security.kubernetes.io/warn"] // "none")] | @tsv' >> "$FINAL_REPORT"
+echo "</pre></div>" >> "$FINAL_REPORT"
+
+############################################################
+# RBAC
+############################################################
+echo "<button class='collapsible'>Namespace RBAC</button><div class='content'><pre>" >> "$FINAL_REPORT"
+kubectl get rolebindings -A -o wide 2>/dev/null >> "$FINAL_REPORT"
+echo "" >> "$FINAL_REPORT"
+kubectl get clusterrolebindings -o wide 2>/dev/null >> "$FINAL_REPORT"
+echo "</pre></div>" >> "$FINAL_REPORT"
 
 ############################################################
 # NODE LIST
