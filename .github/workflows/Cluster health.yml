@@ -4,7 +4,7 @@ set +e
 
 export AZURE_AKS_DISABLE_AUTO_VERSION_CHECK=true
 
-############################################################
+###########################################################
 # REQUIRED FOR GITHUB ACTIONS
 ############################################################
 export AZURE_CONFIG_DIR="$HOME/.azure"
